@@ -13,6 +13,12 @@
         <div class="container">
             <img src="{{ url_for('static', filename='logo.png') }}" alt="Online Bookstore Logo" class="logo">
             <h1>Online Bookstore</h1>
+            <div class="search-bar">
+                <form action="/search" method="GET" class="search-form">
+                    <input type="search" name="query" placeholder="Search for books..." class="search-input" required>
+                    <button type="submit" class="search-btn">Search</button>
+                </form>
+            </div>
             <nav>
                 <a href="/">Home</a>
                 <a href="/cart" class="active">Cart</a>

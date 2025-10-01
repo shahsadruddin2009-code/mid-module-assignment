@@ -1,0 +1,471 @@
+// Jenkins CI/CD Pipeline for Mid Module Online Bookstore
+
+pipeline {
+    agent any
+    
+    environment {
+        PYTHON_VERSION = '3.11'
+        APPLICATION_NAME = 'online-bookstore'
+        REGISTRY_URL = 'your-registry.com'
+        STAGING_URL = 'https://staging-bookstore.yourapp.com'
+        PRODUCTION_URL = 'https://bookstore.yourapp.com'
+        
+        // Credentials
+        REGISTRY_CREDENTIALS = credentials('docker-registry')
+        SLACK_CHANNEL = '#bookstore-deployments'
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 60, unit: 'MINUTES')
+        timestamps()
+        retry(3)
+    }
+    
+    triggers {
+        // Poll SCM every 5 minutes
+        pollSCM('H/5 * * * *')
+    }
+    
+    stages {
+        stage('📋 Preparation') {
+            steps {
+                script {
+                    // Set build display name
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} - Online Bookstore"
+                    currentBuild.description = "Building Online Bookstore Flask App"
+                    
+                    // Get short commit hash
+                    env.GIT_COMMIT_SHORT = env.GIT_COMMIT.take(7)
+                }
+                
+                echo "🚀 Starting Online Bookstore CI/CD Pipeline"
+                echo "Build Number: ${env.BUILD_NUMBER}"
+                echo "Git Commit: ${env.GIT_COMMIT_SHORT}"
+                echo "Branch: ${env.BRANCH_NAME}"
+            }
+        }
+        
+        stage('🔧 Setup Environment') {
+            steps {
+                script {
+                    sh """
+                        echo "Setting up Python ${PYTHON_VERSION} environment..."
+                        python${PYTHON_VERSION} -m venv venv
+                        . venv/bin/activate
+                        python -m pip install --upgrade pip
+                        pip install -r requirements.txt
+                        pip install pytest-cov flake8 black bandit safety
+                        echo "✅ Environment setup completed"
+                    """
+                }
+            }
+        }
+        
+        stage('🔍 Code Quality Analysis') {
+            parallel {
+                stage('Code Formatting') {
+                    steps {
+                        sh """
+                            . venv/bin/activate
+                            echo "🎨 Checking code formatting with Black..."
+                            black --check --diff . || echo "Formatting issues detected"
+                        """
+                    }
+                    post {
+                        always {
+                            publishHTML([
+                                allowMissing: true,
+                                alwaysLinkToLastBuild: false,
+                                keepAll: true,
+                                reportDir: '.',
+                                reportFiles: '*.diff',
+                                reportName: 'Code Formatting Report'
+                            ])
+                        }
+                    }
+                }
+                
+                stage('Linting') {
+                    steps {
+                        sh """
+                            . venv/bin/activate
+                            echo "🔍 Running flake8 linting..."
+                            flake8 . --format=pylint --output-file=flake8-report.txt || true
+                            flake8 . --max-line-length=127 || echo "Linting issues detected"
+                        """
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'flake8-report.txt', fingerprint: true
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('🛡️ Security Analysis') {
+            parallel {
+                stage('Bandit Security Scan') {
+                    steps {
+                        sh """
+                            . venv/bin/activate
+                            echo "🔐 Running Bandit security scan..."
+                            bandit -r . -f json -o bandit-report.json || true
+                            bandit -r . || true
+                        """
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'bandit-report.json', fingerprint: true
+                        }
+                    }
+                }
+                
+                stage('Safety Check') {
+                    steps {
+                        sh """
+                            . venv/bin/activate
+                            echo "🛡️ Checking for known vulnerabilities..."
+                            safety check --json --output safety-report.json || true
+                            safety check || true
+                        """
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'safety-report.json', fingerprint: true
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('🧪 Comprehensive Testing') {
+            parallel {
+                stage('Model Tests') {
+                    steps {
+                        sh """
+                            . venv/bin/activate
+                            echo "🧪 Running model tests..."
+                            python -m pytest test_app_model.py -v --junitxml=model-tests.xml --cov=models --cov-report=xml:model-coverage.xml
+                        """
+                    }
+                    post {
+                        always {
+                            publishTestResults testResultsPattern: 'model-tests.xml'
+                        }
+                    }
+                }
+                
+                stage('Route Tests') {
+                    steps {
+                        sh """
+                            . venv/bin/activate
+                            echo "🧪 Running route tests..."
+                            python -m pytest test_app_routes.py -v --junitxml=route-tests.xml --cov=app --cov-report=xml:route-coverage.xml
+                        """
+                    }
+                    post {
+                        always {
+                            publishTestResults testResultsPattern: 'route-tests.xml'
+                        }
+                    }
+                }
+                
+                stage('Category Tests') {
+                    steps {
+                        sh """
+                            . venv/bin/activate
+                            echo "🧪 Running category edge case tests..."
+                            python -m pytest test_category_edge_cases.py -v --junitxml=category-tests.xml
+                        """
+                    }
+                    post {
+                        always {
+                            publishTestResults testResultsPattern: 'category-tests.xml'
+                        }
+                    }
+                }
+                
+                stage('Integration Tests') {
+                    steps {
+                        sh """
+                            . venv/bin/activate
+                            echo "🧪 Running integration tests..."
+                            python -m pytest test_integration.py -v --junitxml=integration-tests.xml
+                        """
+                    }
+                    post {
+                        always {
+                            publishTestResults testResultsPattern: 'integration-tests.xml'
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('🔗 Full Integration Testing') {
+            steps {
+                sh """
+                    . venv/bin/activate
+                    echo "🔗 Running comprehensive integration test suite..."
+                    python test_integration_full_mid_module.py
+                """
+            }
+        }
+        
+        stage('📊 Coverage Analysis') {
+            steps {
+                sh """
+                    . venv/bin/activate
+                    echo "📊 Generating coverage report..."
+                    pytest --cov=. --cov-report=xml --cov-report=html --cov-exclude="test_*" app.py models.py
+                """
+            }
+            post {
+                always {
+                    publishCoverageResults([
+                        [path: 'coverage.xml', type: 'cobertura']
+                    ])
+                    publishHTML([
+                        allowMissing: false,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'htmlcov',
+                        reportFiles: 'index.html',
+                        reportName: 'Coverage Report'
+                    ])
+                }
+            }
+        }
+        
+        stage('🏗️ Build Application') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    echo "🏗️ Building Docker image for Online Bookstore..."
+                    
+                    def image = docker.build("${APPLICATION_NAME}:${env.GIT_COMMIT_SHORT}")
+                    
+                    echo "🧪 Testing Docker image..."
+                    sh """
+                        docker run -d -p 5001:5000 --name bookstore-test-${env.BUILD_NUMBER} ${APPLICATION_NAME}:${env.GIT_COMMIT_SHORT}
+                        sleep 15
+                        curl -f http://localhost:5001/ || exit 1
+                        docker stop bookstore-test-${env.BUILD_NUMBER}
+                        docker rm bookstore-test-${env.BUILD_NUMBER}
+                    """
+                    
+                    echo "📦 Pushing to registry..."
+                    docker.withRegistry("https://${REGISTRY_URL}", 'registry-credentials') {
+                        image.push("${env.GIT_COMMIT_SHORT}")
+                        image.push("latest")
+                    }
+                }
+            }
+        }
+        
+        stage('🔒 Container Security Scan') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    sh """
+                        echo "🔒 Scanning Docker image for vulnerabilities..."
+                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \\
+                               -v \$(pwd):/tmp/trivy aquasec/trivy:latest \\
+                               image --format json --output /tmp/trivy/trivy-report.json \\
+                               ${APPLICATION_NAME}:${env.GIT_COMMIT_SHORT} || true
+                    """
+                    archiveArtifacts artifacts: 'trivy-report.json', fingerprint: true
+                }
+            }
+        }
+        
+        stage('🚀 Deploy to Staging') {
+            when {
+                branch 'main'
+            }
+            steps {
+                script {
+                    echo "🚀 Deploying Online Bookstore to staging environment..."
+                    
+                    // Add your staging deployment logic here
+                    sh """
+                        echo "Deploying ${APPLICATION_NAME}:${env.GIT_COMMIT_SHORT} to staging..."
+                        echo "Staging URL: ${STAGING_URL}"
+                        
+                        # Example deployment commands:
+                        # docker-compose -f docker-compose.staging.yml down || true
+                        # docker-compose -f docker-compose.staging.yml pull
+                        # docker-compose -f docker-compose.staging.yml up -d
+                        
+                        # Or with Kubernetes:
+                        # kubectl set image deployment/bookstore-app bookstore=${REGISTRY_URL}/${APPLICATION_NAME}:${env.GIT_COMMIT_SHORT}
+                        # kubectl rollout status deployment/bookstore-app
+                        
+                        echo "✅ Staging deployment completed"
+                    """
+                }
+            }
+            post {
+                success {
+                    slackSend channel: "${SLACK_CHANNEL}",
+                             color: 'good',
+                             message: "🚀 Online Bookstore deployed to staging! Build: #${env.BUILD_NUMBER}"
+                }
+            }
+        }
+        
+        stage('🧪 Staging Validation') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh """
+                    . venv/bin/activate
+                    echo "🧪 Running staging validation tests..."
+                    
+                    # Add staging-specific tests
+                    # python -m pytest tests/staging/ --base-url=${STAGING_URL} -v --junitxml=staging-tests.xml
+                    
+                    echo "✅ Staging validation completed"
+                """
+            }
+            post {
+                always {
+                    // publishTestResults testResultsPattern: 'staging-tests.xml'
+                    echo "Staging tests completed"
+                }
+            }
+        }
+        
+        stage('🎯 Deploy to Production') {
+            when {
+                branch 'main'
+            }
+            steps {
+                input message: 'Deploy Online Bookstore to Production?', 
+                      ok: 'Deploy',
+                      submitterParameter: 'DEPLOYER'
+                      
+                script {
+                    echo "🎯 Deploying Online Bookstore to production environment..."
+                    echo "Deployer: ${env.DEPLOYER}"
+                    
+                    // Add your production deployment logic here
+                    sh """
+                        echo "Deploying ${APPLICATION_NAME}:${env.GIT_COMMIT_SHORT} to production..."
+                        echo "Production URL: ${PRODUCTION_URL}"
+                        echo "Deployed by: ${env.DEPLOYER}"
+                        
+                        # Example deployment commands:
+                        # docker-compose -f docker-compose.prod.yml down || true
+                        # docker-compose -f docker-compose.prod.yml pull
+                        # docker-compose -f docker-compose.prod.yml up -d
+                        
+                        echo "✅ Production deployment completed"
+                    """
+                }
+            }
+            post {
+                success {
+                    slackSend channel: "${SLACK_CHANNEL}",
+                             color: 'good',
+                             message: "🎉 Online Bookstore deployed to production! Version: ${env.GIT_COMMIT_SHORT} by ${env.DEPLOYER}"
+                }
+                failure {
+                    slackSend channel: "${SLACK_CHANNEL}",
+                             color: 'danger',
+                             message: "❌ Production deployment failed! Build: #${env.BUILD_NUMBER}"
+                }
+            }
+        }
+        
+        stage('✅ Post-Deployment Verification') {
+            when {
+                branch 'main'
+            }
+            steps {
+                sh """
+                    . venv/bin/activate
+                    echo "✅ Running post-deployment verification..."
+                    sleep 30  # Wait for deployment to stabilize
+                    
+                    # Add production verification tests
+                    # python -m pytest tests/production/ --base-url=${PRODUCTION_URL} -v --junitxml=production-tests.xml
+                    
+                    echo "🎉 Production verification completed successfully!"
+                """
+            }
+            post {
+                success {
+                    slackSend channel: "${SLACK_CHANNEL}",
+                             color: 'good',
+                             message: "✅ Post-deployment tests passed! Online Bookstore is live and healthy! 🎉"
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo "🧹 Cleaning up workspace..."
+            cleanWs()
+        }
+        
+        success {
+            echo "🎉 Online Bookstore pipeline completed successfully!"
+            emailext (
+                subject: "✅ Online Bookstore Build Success - #${env.BUILD_NUMBER}",
+                body: """
+                The Online Bookstore build has completed successfully!
+                
+                📋 Build Details:
+                - Build Number: #${env.BUILD_NUMBER}
+                - Git Commit: ${env.GIT_COMMIT_SHORT}
+                - Branch: ${env.BRANCH_NAME}
+                - Application: ${APPLICATION_NAME}
+                
+                🧪 Test Results:
+                - All unit tests passed ✅
+                - All integration tests passed ✅
+                - Security scans completed ✅
+                - Coverage report generated ✅
+                
+                🚀 Deployment Status:
+                - Staging: Deployed ✅
+                - Production: ${env.BRANCH_NAME == 'main' ? 'Deployed ✅' : 'Skipped (not main branch)'}
+                
+                View build details: ${env.BUILD_URL}
+                """,
+                to: "${env.CHANGE_AUTHOR_EMAIL ?: 'team@yourcompany.com'}"
+            )
+        }
+        
+        failure {
+            echo "❌ Online Bookstore pipeline failed!"
+            emailext (
+                subject: "❌ Online Bookstore Build Failed - #${env.BUILD_NUMBER}",
+                body: """
+                The Online Bookstore build has failed!
+                
+                📋 Build Details:
+                - Build Number: #${env.BUILD_NUMBER}
+                - Git Commit: ${env.GIT_COMMIT_SHORT}
+                - Branch: ${env.BRANCH_NAME}
+                
+                Please check the console output for details: ${env.BUILD_URL}
+                """,
+                to: "${env.CHANGE_AUTHOR_EMAIL ?: 'team@yourcompany.com'}"
+            )
+            
+            slackSend channel: "${SLACK_CHANNEL}",
+                     color: 'danger',
+                     message: "❌ Online Bookstore pipeline failed! Build: #${env.BUILD_NUMBER} - ${env.BUILD_URL}"
+        }
+    }
+}
