@@ -27,10 +27,10 @@ cart = Cart()
 
 # Create a global books list to avoid duplication
 BOOKS = [
-    Book("The Great Gatsby", "Fiction", 10.99, "/static/images/books/the_great_gatsby.jpg"),
-    Book("1984", "Dystopia", 8.99, "/static/images/books/1984.jpg"),
-    Book("I Ching", "Traditional", 18.99, "/static/images/books/I-Ching.jpg"),
-    Book("Moby Dick", "Adventure", 12.49, "/static/images/books/moby_dick.jpg")
+    Book("The Great Gatsby", "Fiction", 10.99, "images/books/the_great_gatsby.jpg"),
+    Book("1984", "Dystopia", 8.99, "images/books/1984.jpg"),
+    Book("I Ching", "Traditional", 18.99, "images/books/I-Ching.jpg"),
+    Book("Moby Dick", "Adventure", 12.49, "images/books/moby_dick.jpg")
 ]
 
 def get_book_by_title(title):
@@ -251,6 +251,32 @@ def checkout():
     
     total_price = cart.get_total_price()
     return render_template('checkout.html', cart=cart, total_price=total_price)
+
+
+@app.route('/search')
+def search_books():
+    """Search for books by title or category"""
+    query = request.args.get('query', '').strip()
+    
+    if not query:
+        flash('Please enter a search term!', 'error')
+        return redirect(url_for('index'))
+    
+    # Search in both title and category
+    matching_books = []
+    query_lower = query.lower()
+    
+    for book in BOOKS:
+        if (query_lower in book.title.lower() or 
+            query_lower in book.category.lower()):
+            matching_books.append(book)
+    
+    if matching_books:
+        flash(f'Found {len(matching_books)} book(s) for "{query}"', 'success')
+    else:
+        flash(f'No books found for "{query}"', 'info')
+    
+    return render_template('index.html', books=matching_books, cart=cart, search_query=query)
 
 
 @app.route('/metrics')
