@@ -177,7 +177,6 @@ jobs:
     needs: [test, build]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    environment: staging
     
     steps:
     - name: Checkout code
@@ -217,7 +216,6 @@ jobs:
     needs: deploy-staging
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    environment: production
     
     steps:
     - name: Checkout code
