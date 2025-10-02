@@ -215,8 +215,6 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
-# Test files and temporary files
-test_*.py
-*_test.py
+# Temporary files (keeping test files as they should be tracked)
 temp/
 tmp/
