@@ -281,18 +281,109 @@ def search_books():
 
 @app.route('/metrics')
 def performance_metrics():
-    """Display performance metrics dashboard"""
+    """Enhanced performance metrics with additional system information"""
+    import psutil
+    import os
+    
+    # Calculate basic metrics
     avg_response_time = 0
     if performance_stats['request_count'] > 0:
         avg_response_time = performance_stats['total_response_time'] / performance_stats['request_count']
     
+    # Get system metrics
+    try:
+        cpu_percent = psutil.cpu_percent()
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage('/')
+    except:
+        cpu_percent = 0
+        memory = type('obj', (object,), {'percent': 0, 'total': 0, 'available': 0})()
+        disk = type('obj', (object,), {'percent': 0, 'total': 0, 'free': 0})()
+    
+    # Enhanced route statistics with performance ratings
+    enhanced_route_stats = {}
+    for route, stats in performance_stats['route_stats'].items():
+        enhanced_route_stats[route] = {
+            **stats,
+            'performance_rating': get_performance_rating(stats['avg_time']),
+            'requests_per_minute': calculate_rpm(stats['count'])
+        }
+    
     metrics = {
         'total_requests': performance_stats['request_count'],
         'average_response_time': f"{avg_response_time:.2f}ms",
-        'route_statistics': performance_stats['route_stats']
+        'route_statistics': enhanced_route_stats,
+        'system_info': {
+            'cpu_usage': cpu_percent,
+            'memory_usage': memory.percent,
+            'memory_total_gb': round(memory.total / (1024**3), 2),
+            'memory_available_gb': round(memory.available / (1024**3), 2),
+            'disk_usage': disk.percent,
+            'uptime_seconds': time.time() - app.config.get('START_TIME', time.time())
+        },
+        'performance_summary': {
+            'health_status': get_health_status(avg_response_time, cpu_percent, memory.percent),
+            'total_response_time': performance_stats['total_response_time'],
+            'fastest_route': get_fastest_route(),
+            'slowest_route': get_slowest_route(),
+            'most_used_route': get_most_used_route()
+        },
+        'timestamp': time.time()
     }
     
     return jsonify(metrics)
+
+
+def get_performance_rating(avg_time):
+    """Rate route performance based on average response time"""
+    if avg_time < 50:
+        return 'excellent'
+    elif avg_time < 200:
+        return 'good' 
+    elif avg_time < 500:
+        return 'fair'
+    else:
+        return 'poor'
+
+
+def calculate_rpm(request_count):
+    """Calculate requests per minute (simplified)"""
+    uptime_minutes = (time.time() - app.config.get('START_TIME', time.time())) / 60
+    return round(request_count / max(uptime_minutes, 1), 2)
+
+
+def get_health_status(avg_response_time, cpu_usage, memory_usage):
+    """Determine overall system health"""
+    if avg_response_time < 200 and cpu_usage < 70 and memory_usage < 80:
+        return 'excellent'
+    elif avg_response_time < 500 and cpu_usage < 85 and memory_usage < 90:
+        return 'good'
+    else:
+        return 'warning'
+
+
+def get_fastest_route():
+    """Find the route with the best average response time"""
+    if not performance_stats['route_stats']:
+        return None
+    return min(performance_stats['route_stats'].items(), 
+               key=lambda x: x[1]['avg_time'], default=(None, None))
+
+
+def get_slowest_route():
+    """Find the route with the worst average response time"""
+    if not performance_stats['route_stats']:
+        return None
+    return max(performance_stats['route_stats'].items(), 
+               key=lambda x: x[1]['avg_time'], default=(None, None))
+
+
+def get_most_used_route():
+    """Find the route with the most requests"""
+    if not performance_stats['route_stats']:
+        return None
+    return max(performance_stats['route_stats'].items(), 
+               key=lambda x: x[1]['count'], default=(None, None))
 
 
 @app.route('/dashboard')
