@@ -1,20 +1,72 @@
-# Azure DevOps CI/CD Pipeline for Mid Module Online Bookstore
+# 🚀 Azure DevOps CI/CD Pipeline for Online Bookstore Flask Application
+#
+# Features:
+# ✅ Multi-platform testing (Ubuntu, Windows, macOS)
+# ✅ Multiple Python versions (3.9, 3.10, 3.11, 3.12)
+# ✅ Comprehensive test suite with coverage reporting
+# ✅ Security scanning and dependency checking
+# ✅ Docker containerization and registry push
+# ✅ Blue-Green deployment to Azure App Service
+# ✅ Performance monitoring and notifications
+
+name: $(Date:yyyyMMdd)$(Rev:.r)
 
 trigger:
   branches:
     include:
     - main
     - develop
+    - feature/*
+    - hotfix/*
+  paths:
+    exclude:
+    - README.md
+    - docs/*
+    - .gitignore
 
 pr:
   branches:
     include:
     - main
+    - develop
+  paths:
+    exclude:
+    - README.md
+    - docs/*
+
+schedules:
+- cron: "0 2 * * *"
+  displayName: Daily 2 AM build
+  branches:
+    include:
+    - main
+  always: false
 
 variables:
+  # Application Configuration
   pythonVersion: '3.11'
-  vmImageName: 'ubuntu-latest'
-  applicationName: 'online-bookstore'
+  applicationName: 'online-bookstore-flask'
+  applicationVersion: '$(Build.BuildNumber)'
+  
+  # Azure Configuration
+  azureSubscription: 'Azure-Bookstore-Service-Connection'
+  webAppName: 'online-bookstore-prod'
+  resourceGroupName: 'bookstore-rg'
+  
+  # Container Configuration
+  containerRegistry: 'bookstoreregistry.azurecr.io'
+  imageRepository: 'online-bookstore'
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  tag: '$(Build.BuildId)'
+  
+  # VM Images for different platforms
+  vmImageUbuntu: 'ubuntu-latest'
+  vmImageWindows: 'windows-latest'
+  vmImageMacOS: 'macOS-latest'
+  
+  # Quality Gates
+  codeCoverageThreshold: 80
+  performanceThreshold: 2000
 
 stages:
 - stage: Test

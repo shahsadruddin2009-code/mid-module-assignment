@@ -1,13 +1,27 @@
-name: Mid Module Online Bookstore CI/CD
+name: 🚀 Online Bookstore CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop, feature/* ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 2 * * *'  # Daily at 2 AM UTC
+  workflow_dispatch:
+    inputs:
+      deploy_env:
+        description: 'Deployment Environment'
+        required: false
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
 
 env:
   PYTHON_VERSION: '3.11'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   # Continuous Integration

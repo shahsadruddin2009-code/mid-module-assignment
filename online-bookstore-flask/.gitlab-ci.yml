@@ -1,21 +1,70 @@
-# GitLab CI/CD Pipeline for Mid Module Online Bookstore
+# 🚀 Advanced GitLab CI/CD Pipeline for Online Bookstore Flask App
+# 
+# Pipeline Stages:
+# 1. Code Quality & Linting
+# 2. Security Scanning  
+# 3. Multi-Version Testing
+# 4. Performance Testing
+# 5. Container Building
+# 6. Staging Deployment
+# 7. Production Deployment
+# 8. Monitoring & Notifications
+
+image: python:3.11-slim
 
 stages:
-  - test
-  - security
-  - build
-  - deploy-staging
-  - deploy-production
+  - 🔍 quality
+  - 🛡️ security
+  - 🧪 test
+  - ⚡ performance
+  - 🐳 build
+  - 🚀 deploy-staging
+  - 🏆 deploy-production
+  - 📊 monitor
 
 variables:
+  # Python & Pip Configuration
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
+  PYTHONPATH: "$CI_PROJECT_DIR"
   PYTHON_VERSION: "3.11"
-  APPLICATION_NAME: "online-bookstore"
+  
+  # Application Configuration
+  APPLICATION_NAME: "online-bookstore-flask"
+  APPLICATION_VERSION: "$CI_PIPELINE_ID"
+  
+  # Docker Configuration
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  IMAGE_NAME: "$CI_REGISTRY_IMAGE"
+  IMAGE_TAG: "$CI_COMMIT_SHA"
+  
+  # Quality Gates
+  CODE_COVERAGE_THRESHOLD: "80"
+  SECURITY_THRESHOLD: "medium"
+  PERFORMANCE_THRESHOLD: "2000"
+  
+  # Deployment Configuration
+  STAGING_URL: "https://staging-bookstore.gitlab.io"
+  PRODUCTION_URL: "https://bookstore.gitlab.io"
 
+# Cache Configuration for faster builds
 cache:
+  key: 
+    files:
+      - requirements.txt
+      - requirements-dev.txt
   paths:
     - .cache/pip
     - venv/
+    - node_modules/
+  policy: pull-push
+
+# Global before_script for common setup
+before_script:
+  - apt-get update -qq && apt-get install -y -qq git curl
+  - python --version
+  - pip install --upgrade pip
+  - pip install virtualenv
 
 # Test Jobs
 .test-template: &test-template

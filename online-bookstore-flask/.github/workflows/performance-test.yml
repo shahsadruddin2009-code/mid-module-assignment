@@ -1,0 +1,466 @@
+# ⚡ Performance Testing Pipeline
+# Automated load testing and performance monitoring
+
+name: ⚡ Performance Testing
+
+on:
+  schedule:
+    - cron: '0 4 * * *'  # Daily at 4 AM UTC
+  workflow_dispatch:
+    inputs:
+      test_duration:
+        description: 'Test duration in minutes'
+        required: false
+        default: '10'
+        type: string
+      concurrent_users:
+        description: 'Number of concurrent users'
+        required: false
+        default: '50'
+        type: string
+      target_environment:
+        description: 'Target environment for testing'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+  push:
+    branches: [ main ]
+    paths:
+      - 'performance_test.py'
+      - 'app.py'
+      - 'requirements.txt'
+
+env:
+  STAGING_URL: 'http://127.0.0.1:5000'
+  PRODUCTION_URL: 'https://bookstore-prod.herokuapp.com'
+  PERFORMANCE_THRESHOLD_MS: 2000
+  ERROR_RATE_THRESHOLD: 0.05  # 5% error rate threshold
+
+jobs:
+  setup-test-environment:
+    name: 🚀 Setup Test Environment
+    runs-on: ubuntu-latest
+    outputs:
+      target_url: ${{ steps.env.outputs.target_url }}
+      app_running: ${{ steps.health.outputs.running }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install locust pytest-benchmark psutil
+    
+    - name: Determine target environment
+      id: env
+      run: |
+        if [ "${{ github.event.inputs.target_environment }}" = "production" ]; then
+          echo "target_url=${{ env.PRODUCTION_URL }}" >> $GITHUB_OUTPUT
+          echo "🎯 Target: Production Environment"
+        else
+          echo "target_url=${{ env.STAGING_URL }}" >> $GITHUB_OUTPUT
+          echo "🎯 Target: Staging Environment"
+        fi
+    
+    - name: Start local application (if testing staging)
+      if: github.event.inputs.target_environment != 'production'
+      run: |
+        echo "🚀 Starting local Flask application for testing..."
+        python app.py &
+        APP_PID=$!
+        echo "APP_PID=$APP_PID" >> $GITHUB_ENV
+        
+        # Wait for app to start
+        sleep 10
+        
+        echo "🏥 Checking if application is running..."
+        for i in {1..30}; do
+          if curl -f http://127.0.0.1:5000/health > /dev/null 2>&1; then
+            echo "✅ Application is running"
+            break
+          fi
+          echo "⏳ Waiting for application to start... ($i/30)"
+          sleep 2
+        done
+    
+    - name: Health check
+      id: health
+      run: |
+        TARGET_URL="${{ steps.env.outputs.target_url }}"
+        echo "🏥 Performing health check on: $TARGET_URL"
+        
+        if curl -f "$TARGET_URL/health" > /dev/null 2>&1; then
+          echo "✅ Health check passed"
+          echo "running=true" >> $GITHUB_OUTPUT
+        else
+          echo "❌ Health check failed"
+          echo "running=false" >> $GITHUB_OUTPUT
+        fi
+
+  load-testing:
+    name: 📊 Load Testing with Locust
+    runs-on: ubuntu-latest
+    needs: setup-test-environment
+    if: needs.setup-test-environment.outputs.app_running == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install load testing tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install locust requests matplotlib pandas
+    
+    - name: Create Locust test file
+      run: |
+        cat > locustfile.py << 'EOF'
+        from locust import HttpUser, task, between
+        import random
+        
+        class BookstoreUser(HttpUser):
+            wait_time = between(1, 3)
+            
+            def on_start(self):
+                """Simulate user login/session start"""
+                pass
+            
+            @task(3)
+            def browse_homepage(self):
+                """Browse the main page"""
+                self.client.get("/")
+            
+            @task(2)
+            def view_cart(self):
+                """View shopping cart"""
+                self.client.get("/cart")
+            
+            @task(1)
+            def search_books(self):
+                """Search for books"""
+                search_terms = ["Fiction", "Dystopia", "Adventure", "Traditional"]
+                term = random.choice(search_terms)
+                self.client.get(f"/search?query={term}")
+            
+            @task(1)
+            def add_to_cart(self):
+                """Add book to cart"""
+                books = ["The Great Gatsby", "1984", "I Ching", "Moby Dick"]
+                book = random.choice(books)
+                self.client.post("/add-to-cart", data={
+                    "title": book,
+                    "quantity": random.randint(1, 3)
+                })
+            
+            @task(1)
+            def check_metrics(self):
+                """Check performance metrics"""
+                self.client.get("/metrics")
+            
+            @task(1)
+            def health_check(self):
+                """Health check"""
+                self.client.get("/health")
+        EOF
+        echo "✅ Locust test file created"
+    
+    - name: Run load test
+      run: |
+        TARGET_URL="${{ needs.setup-test-environment.outputs.target_url }}"
+        USERS="${{ github.event.inputs.concurrent_users || '50' }}"
+        DURATION="${{ github.event.inputs.test_duration || '10' }}"
+        
+        echo "🚀 Starting load test..."
+        echo "📊 Target URL: $TARGET_URL"
+        echo "👥 Concurrent users: $USERS"
+        echo "⏱️ Duration: ${DURATION} minutes"
+        
+        # Run Locust in headless mode
+        locust --headless \
+          --users $USERS \
+          --spawn-rate 10 \
+          --host $TARGET_URL \
+          --run-time ${DURATION}m \
+          --html performance-report.html \
+          --csv performance-results
+    
+    - name: Analyze results
+      run: |
+        echo "📈 Analyzing performance results..."
+        
+        # Create performance analysis script
+        cat > analyze_performance.py << 'EOF'
+        import pandas as pd
+        import json
+        import sys
+        
+        try:
+            # Read Locust stats
+            stats_df = pd.read_csv('performance-results_stats.csv')
+            
+            # Calculate key metrics
+            avg_response_time = stats_df['Average Response Time'].mean()
+            max_response_time = stats_df['Max Response Time'].max()
+            error_rate = stats_df['Failure Count'].sum() / stats_df['Request Count'].sum() if stats_df['Request Count'].sum() > 0 else 0
+            requests_per_sec = stats_df['Requests/s'].mean()
+            
+            results = {
+                'avg_response_time': round(avg_response_time, 2),
+                'max_response_time': round(max_response_time, 2),
+                'error_rate': round(error_rate, 4),
+                'requests_per_sec': round(requests_per_sec, 2),
+                'total_requests': int(stats_df['Request Count'].sum()),
+                'total_failures': int(stats_df['Failure Count'].sum())
+            }
+            
+            print("📊 Performance Test Results:")
+            print(f"   Average Response Time: {results['avg_response_time']} ms")
+            print(f"   Max Response Time: {results['max_response_time']} ms")
+            print(f"   Error Rate: {results['error_rate']:.2%}")
+            print(f"   Requests/sec: {results['requests_per_sec']}")
+            print(f"   Total Requests: {results['total_requests']}")
+            print(f"   Total Failures: {results['total_failures']}")
+            
+            # Save results
+            with open('performance-summary.json', 'w') as f:
+                json.dump(results, f, indent=2)
+            
+            # Check if performance meets thresholds
+            threshold_ms = float('${{ env.PERFORMANCE_THRESHOLD_MS }}')
+            error_threshold = float('${{ env.ERROR_RATE_THRESHOLD }}')
+            
+            if avg_response_time > threshold_ms:
+                print(f"❌ PERFORMANCE ISSUE: Average response time ({avg_response_time}ms) exceeds threshold ({threshold_ms}ms)")
+                sys.exit(1)
+            
+            if error_rate > error_threshold:
+                print(f"❌ RELIABILITY ISSUE: Error rate ({error_rate:.2%}) exceeds threshold ({error_threshold:.2%})")
+                sys.exit(1)
+            
+            print("✅ All performance thresholds met!")
+            
+        except Exception as e:
+            print(f"❌ Error analyzing results: {e}")
+            sys.exit(1)
+        EOF
+        
+        python analyze_performance.py
+    
+    - name: Upload performance reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: performance-test-results
+        path: |
+          performance-report.html
+          performance-results*.csv
+          performance-summary.json
+          locustfile.py
+        retention-days: 30
+
+  benchmark-testing:
+    name: 🎯 Benchmark Testing
+    runs-on: ubuntu-latest
+    needs: setup-test-environment
+    if: needs.setup-test-environment.outputs.app_running == 'true'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest-benchmark memory-profiler psutil
+    
+    - name: Start local application
+      if: needs.setup-test-environment.outputs.target_url == env.STAGING_URL
+      run: |
+        python app.py &
+        sleep 10
+    
+    - name: Run benchmark tests
+      run: |
+        echo "🎯 Running benchmark tests..."
+        python -m pytest performance_test.py -v --benchmark-only --benchmark-json=benchmark-results.json
+    
+    - name: Memory profiling
+      run: |
+        echo "🧠 Running memory profiling..."
+        
+        # Create memory profiling script
+        cat > memory_profile.py << 'EOF'
+        import requests
+        import time
+        import psutil
+        import json
+        from memory_profiler import profile
+        
+        def make_requests():
+            """Make requests to test memory usage"""
+            base_url = "${{ needs.setup-test-environment.outputs.target_url }}"
+            
+            # Warm up
+            requests.get(f"{base_url}/")
+            
+            # Memory baseline
+            process = psutil.Process()
+            initial_memory = process.memory_info().rss / 1024 / 1024  # MB
+            
+            # Make multiple requests
+            for i in range(100):
+                requests.get(f"{base_url}/")
+                if i % 10 == 0:
+                    requests.get(f"{base_url}/metrics")
+                    requests.get(f"{base_url}/cart")
+            
+            # Final memory
+            final_memory = process.memory_info().rss / 1024 / 1024  # MB
+            memory_increase = final_memory - initial_memory
+            
+            results = {
+                'initial_memory_mb': round(initial_memory, 2),
+                'final_memory_mb': round(final_memory, 2),
+                'memory_increase_mb': round(memory_increase, 2),
+                'memory_increase_percent': round((memory_increase / initial_memory) * 100, 2) if initial_memory > 0 else 0
+            }
+            
+            print(f"📊 Memory Profile Results:")
+            print(f"   Initial Memory: {results['initial_memory_mb']} MB")
+            print(f"   Final Memory: {results['final_memory_mb']} MB")
+            print(f"   Memory Increase: {results['memory_increase_mb']} MB ({results['memory_increase_percent']}%)")
+            
+            with open('memory-profile-results.json', 'w') as f:
+                json.dump(results, f, indent=2)
+        
+        if __name__ == "__main__":
+            make_requests()
+        EOF
+        
+        python memory_profile.py
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: benchmark-results
+        path: |
+          benchmark-results.json
+          memory-profile-results.json
+        retention-days: 30
+
+  performance-report:
+    name: 📋 Performance Report
+    runs-on: ubuntu-latest
+    needs: [load-testing, benchmark-testing]
+    if: always()
+    
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+    
+    - name: Generate performance report
+      run: |
+        echo "📋 Generating comprehensive performance report..."
+        
+        cat > performance-report.md << 'EOF'
+        # 📊 Performance Test Report
+        
+        **Test Date:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        **Target Environment:** ${{ github.event.inputs.target_environment || 'staging' }}
+        **Triggered by:** ${{ github.actor }}
+        
+        ## 🎯 Test Configuration
+        - **Concurrent Users:** ${{ github.event.inputs.concurrent_users || '50' }}
+        - **Test Duration:** ${{ github.event.inputs.test_duration || '10' }} minutes
+        - **Target URL:** ${{ needs.setup-test-environment.outputs.target_url }}
+        
+        ## 📈 Load Test Results
+        EOF
+        
+        # Add load test results if available
+        if [ -f "performance-test-results/performance-summary.json" ]; then
+          cat >> performance-report.md << 'EOF'
+        
+        ### Key Metrics
+        EOF
+          python3 -c "
+        import json
+        with open('performance-test-results/performance-summary.json', 'r') as f:
+            data = json.load(f)
+        print(f\"- **Average Response Time:** {data['avg_response_time']} ms\")
+        print(f\"- **Max Response Time:** {data['max_response_time']} ms\")  
+        print(f\"- **Error Rate:** {data['error_rate']:.2%}\")
+        print(f\"- **Requests/sec:** {data['requests_per_sec']}\")
+        print(f\"- **Total Requests:** {data['total_requests']:,}\")
+        print(f\"- **Total Failures:** {data['total_failures']:,}\")
+        " >> performance-report.md
+        fi
+        
+        # Add benchmark results if available
+        if [ -f "benchmark-results/memory-profile-results.json" ]; then
+          cat >> performance-report.md << 'EOF'
+        
+        ## 🧠 Memory Profile Results
+        EOF
+          python3 -c "
+        import json
+        with open('benchmark-results/memory-profile-results.json', 'r') as f:
+            data = json.load(f)
+        print(f\"- **Initial Memory:** {data['initial_memory_mb']} MB\")
+        print(f\"- **Final Memory:** {data['final_memory_mb']} MB\")
+        print(f\"- **Memory Increase:** {data['memory_increase_mb']} MB ({data['memory_increase_percent']}%)\")
+        " >> performance-report.md
+        fi
+        
+        cat >> performance-report.md << 'EOF'
+        
+        ## 🎭 Test Scenarios
+        - Homepage browsing
+        - Shopping cart operations
+        - Book search functionality
+        - Add to cart operations
+        - Metrics endpoint access
+        - Health check monitoring
+        
+        ## 📊 Files Generated
+        - Performance HTML Report
+        - CSV Statistics
+        - Benchmark JSON Results
+        - Memory Profile Data
+        
+        ---
+        *Generated by GitHub Actions Performance Testing Pipeline*
+        EOF
+        
+        echo "✅ Performance report generated"
+        cat performance-report.md
+    
+    - name: Upload final report
+      uses: actions/upload-artifact@v3
+      with:
+        name: final-performance-report
+        path: performance-report.md
+        retention-days: 90

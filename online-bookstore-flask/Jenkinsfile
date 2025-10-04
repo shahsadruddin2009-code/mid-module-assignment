@@ -1,30 +1,92 @@
-// Jenkins CI/CD Pipeline for Mid Module Online Bookstore
+#!/usr/bin/env groovy
+
+/**
+ * 🚀 Advanced Jenkins CI/CD Pipeline for Online Bookstore
+ * 
+ * Features:
+ * - Multi-stage testing and deployment
+ * - Docker containerization
+ * - Performance testing
+ * - Security scanning
+ * - Automated notifications
+ * - Blue-Green deployment strategy
+ */
 
 pipeline {
-    agent any
+    agent {
+        label 'docker'
+    }
     
     environment {
+        // Application Configuration
         PYTHON_VERSION = '3.11'
-        APPLICATION_NAME = 'online-bookstore'
-        REGISTRY_URL = 'your-registry.com'
-        STAGING_URL = 'https://staging-bookstore.yourapp.com'
-        PRODUCTION_URL = 'https://bookstore.yourapp.com'
+        APPLICATION_NAME = 'online-bookstore-flask'
+        APPLICATION_VERSION = "${env.BUILD_NUMBER}"
         
-        // Credentials
-        REGISTRY_CREDENTIALS = credentials('docker-registry')
-        SLACK_CHANNEL = '#bookstore-deployments'
+        // Registry and Deployment URLs
+        REGISTRY_URL = 'ghcr.io'
+        IMAGE_NAME = "${REGISTRY_URL}/${env.JOB_NAME}:${env.BUILD_NUMBER}"
+        
+        // Environment URLs
+        STAGING_URL = 'https://staging-bookstore.herokuapp.com'
+        PRODUCTION_URL = 'https://bookstore-prod.herokuapp.com'
+        
+        // Credentials and Keys
+        REGISTRY_CREDENTIALS = credentials('ghcr-token')
+        SLACK_WEBHOOK = credentials('slack-webhook')
+        HEROKU_API_KEY = credentials('heroku-api-key')
+        
+        // Notification Settings
+        SLACK_CHANNEL = '#ci-cd-notifications'
+        EMAIL_RECIPIENTS = 'dev-team@company.com'
+        
+        // Quality Gates
+        CODE_COVERAGE_THRESHOLD = '80'
+        PERFORMANCE_THRESHOLD = '2000'  // ms
     }
     
     options {
-        buildDiscarder(logRotator(numToKeepStr: '10'))
-        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(
+            numToKeepStr: '20',
+            daysToKeepStr: '30',
+            artifactNumToKeepStr: '10'
+        ))
+        timeout(time: 90, unit: 'MINUTES')
         timestamps()
-        retry(3)
+        ansiColor('xterm')
+        skipDefaultCheckout()
     }
     
     triggers {
-        // Poll SCM every 5 minutes
-        pollSCM('H/5 * * * *')
+        // Webhook trigger for GitHub
+        githubPush()
+        // Scheduled daily build at 2 AM
+        cron('0 2 * * *')
+        // Poll SCM as fallback
+        pollSCM('H/10 * * * *')
+    }
+    
+    parameters {
+        choice(
+            name: 'DEPLOY_ENVIRONMENT',
+            choices: ['none', 'staging', 'production'],
+            description: 'Select deployment environment'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS',
+            defaultValue: false,
+            description: 'Skip test execution (not recommended for production)'
+        )
+        booleanParam(
+            name: 'FORCE_DEPLOY',
+            defaultValue: false,
+            description: 'Force deployment even if quality gates fail'
+        )
+        string(
+            name: 'CUSTOM_TAG',
+            defaultValue: '',
+            description: 'Custom Docker image tag (optional)'
+        )
     }
     
     stages {
