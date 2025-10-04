@@ -342,9 +342,10 @@ jobs:
       needs.docker-test.result == 'success' && 
       github.ref == 'refs/heads/main'
     
-    environment:
-      name: container-registry
-      url: https://github.com/${{ github.repository }}/pkgs/container/${{ github.event.repository.name }}
+    # Container registry deployment
+    # environment:
+    #   name: container-registry
+    #   url: https://github.com/${{ github.repository }}/pkgs/container/${{ github.event.repository.name }}
     
     steps:
     - name: Checkout code
