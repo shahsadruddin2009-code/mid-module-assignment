@@ -272,7 +272,7 @@ jobs:
         echo "✅ Deployment record created and validated"
     
     - name: Upload deployment record
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: deployment-record
         path: deployment-record.json
