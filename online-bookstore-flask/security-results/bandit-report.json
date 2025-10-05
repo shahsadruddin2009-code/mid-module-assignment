@@ -1,0 +1,19 @@
+﻿{
+    "metrics":  {
+                    "_totals":  {
+                                    "SEVERITY.LOW":  0,
+                                    "SEVERITY.MEDIUM":  1,
+                                    "SEVERITY.HIGH":  0
+                                }
+                },
+    "results":  [
+                    {
+                        "test_name":  "hardcoded_password_string",
+                        "issue_text":  "Possible hardcoded password found in debug configuration",
+                        "line_number":  407,
+                        "issue_severity":  "MEDIUM",
+                        "filename":  "app.py",
+                        "issue_confidence":  "HIGH"
+                    }
+                ]
+}

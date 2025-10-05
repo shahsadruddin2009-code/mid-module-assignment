@@ -1,0 +1,8 @@
+﻿{
+    "timestamp":  "2025-10-05_00-32-53",
+    "version":  "main",
+    "environment":  "staging",
+    "target_url":  "https://staging-bookstore.herokuapp.com",
+    "deployed_by":  "shahs",
+    "status":  "success"
+}

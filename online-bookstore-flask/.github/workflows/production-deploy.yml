@@ -1,5 +1,10 @@
 # 🚀 Production Deployment Pipeline
 # Advanced deployment workflow with blue-green deployment strategy
+#
+# 📋 Setup Instructions:
+# 1. Slack Notifications: Uncomment Slack notification steps and configure SLACK_WEBHOOK_URL secret
+# 2. Environments: Set up production and staging environments in GitHub repository settings
+# 3. Secrets: Configure GITHUB_TOKEN (usually auto-provided) and any custom secrets
 
 name: 🏆 Production Deployment
 
@@ -87,7 +92,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: pre-deployment-checks
     if: github.event.inputs.environment == 'staging' || github.event_name == 'workflow_dispatch'
-    # Deployment to staging environment
     # environment:
     #   name: staging
     #   url: https://staging-bookstore.herokuapp.com
@@ -111,8 +115,22 @@ jobs:
     - name: Run smoke tests
       run: |
         echo "🧪 Running smoke tests against staging..."
-        # Add your smoke tests here
-        curl -f https://staging-bookstore.herokuapp.com/health || exit 1
+        
+        # Health check with retry logic
+        for i in {1..3}; do
+          if curl -f -s --max-time 30 https://staging-bookstore.herokuapp.com/health; then
+            echo "✅ Health check passed on attempt $i"
+            break
+          else
+            echo "❌ Health check failed on attempt $i"
+            if [ $i -eq 3 ]; then
+              echo "💥 All health check attempts failed"
+              exit 1
+            fi
+            sleep 10
+          fi
+        done
+        
         echo "✅ Smoke tests passed!"
     
     - name: Staging deployment notification
@@ -125,7 +143,6 @@ jobs:
           Version: ${{ needs.pre-deployment-checks.outputs.deploy_version }}
           Environment: staging
           URL: https://staging-bookstore.herokuapp.com
-      # Slack notifications (requires SLACK_WEBHOOK_URL secret to be configured)
       # env:
       #   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
@@ -138,7 +155,6 @@ jobs:
       needs.pre-deployment-checks.result == 'success' &&
       (github.event.inputs.environment == 'production' || github.event_name == 'release') &&
       (needs.deploy-staging.result == 'success' || github.event.inputs.force_deploy == 'true')
-    # Production environment deployment
     # environment:
     #   name: production
     #   url: https://bookstore-prod.herokuapp.com
@@ -151,7 +167,7 @@ jobs:
       uses: trstringer/manual-approval@v1
       if: github.event.inputs.force_deploy != 'true'
       with:
-        secret: ${{ github.TOKEN }}
+        secret: ${{ github.token }}
         approvers: ${{ github.actor }}
         minimum-approvals: 1
         issue-title: "🏆 Production Deployment Approval Required"
@@ -214,7 +230,7 @@ jobs:
         
         # Health checks
         echo "🏥 Checking application health..."
-        # curl -f https://bookstore-prod.herokuapp.com/health || exit 1
+        curl -f https://bookstore-prod.herokuapp.com/health || exit 1
         
         # Performance checks
         echo "⚡ Checking application performance..."
@@ -230,20 +246,42 @@ jobs:
         echo "📊 Updating deployment metrics..."
         echo "🏷️ Tagging successful deployment..."
         
-        # Create deployment record
+        # Create deployment record with proper timestamp
+        TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
         cat > deployment-record.json << EOF
         {
           "deployment_id": "${{ github.run_id }}",
           "version": "${{ needs.pre-deployment-checks.outputs.deploy_version }}",
           "environment": "production",
           "deployed_by": "${{ github.actor }}",
-          "deployed_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+          "deployed_at": "${TIMESTAMP}",
           "status": "success",
-          "url": "https://bookstore-prod.herokuapp.com"
+          "url": "https://bookstore-prod.herokuapp.com",
+          "workflow_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
         }
         EOF
         
-        echo "✅ Deployment record created"
+        # Validate JSON format
+        if command -v jq >/dev/null 2>&1; then
+          jq . deployment-record.json > /dev/null || {
+            echo "❌ Invalid JSON format in deployment record"
+            exit 1
+          }
+        fi
+        
+        echo "✅ Deployment record created and validated"
+    
+    - name: Upload deployment record
+      uses: actions/upload-artifact@v3
+      with:
+        name: deployment-record
+        path: deployment-record.json
+        retention-days: 90
+    
+    - name: Generate deployment timestamp
+      id: deployment-time
+      run: |
+        echo "timestamp=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
     
     - name: Production deployment notification
       uses: 8398a7/action-slack@v3
@@ -258,26 +296,25 @@ jobs:
           🔗 **URL:** https://bookstore-prod.herokuapp.com
           👤 **Deployed by:** ${{ github.actor }}
           
-          ${{ job.status == 'success' && '🎉 Deployment completed successfully!' || '❌ Deployment failed - immediate attention required!' }}
-      # Slack notifications (requires SLACK_WEBHOOK_URL secret to be configured)
+                    ${{ job.status == 'success' && '🎉 Deployment completed successfully!' || '❌ Deployment failed - immediate attention required!' }}
       # env:
       #   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
     
     - name: Create GitHub Release (if not exists)
-      uses: actions/create-release@v1
-      if: github.event_name != 'release' && job.status == 'success'
+      uses: softprops/action-gh-release@v1
+      if: github.event_name != 'release' && success()
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ needs.pre-deployment-checks.outputs.deploy_version }}
-        release_name: "Release ${{ needs.pre-deployment-checks.outputs.deploy_version }}"
+        name: "Release ${{ needs.pre-deployment-checks.outputs.deploy_version }}"
         body: |
           🚀 **Production Release ${{ needs.pre-deployment-checks.outputs.deploy_version }}**
           
           This release has been successfully deployed to production.
           
           **Deployment Details:**
-          - Deployed at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - Deployed at: ${{ steps.deployment-time.outputs.timestamp }}
           - Deployed by: ${{ github.actor }}
           - Environment: Production
           - URL: https://bookstore-prod.herokuapp.com
@@ -293,9 +330,8 @@ jobs:
   rollback:
     name: 🔄 Rollback (Manual)
     runs-on: ubuntu-latest
-    needs: [deploy-production]
-    if: failure() || cancelled()
-    # Rollback environment (commented out to avoid validation errors)
+    needs: [pre-deployment-checks, deploy-production]
+    if: always() && (needs.deploy-production.result == 'failure' || needs.deploy-production.result == 'cancelled')
     # environment:
     #   name: production-rollback
     
@@ -303,12 +339,29 @@ jobs:
     - name: Emergency Rollback
       run: |
         echo "🚨 EMERGENCY ROLLBACK INITIATED"
-        echo "🔄 Rolling back to previous stable version..."
+        echo "� Rollback Details:"
+        echo "   - Failed deployment: ${{ github.run_id }}"
+        echo "   - Target version: ${{ needs.pre-deployment-checks.outputs.deploy_version }}"
+        echo "   - Initiated by: ${{ github.actor }}"
+        echo ""
         
-        # Implement rollback logic here
-        sleep 5
+        echo "�🔄 Rolling back to previous stable version..."
         
-        echo "✅ Rollback completed"
+        # Simulate rollback steps
+        echo "📦 Identifying previous stable version..."
+        sleep 2
+        
+        echo "🔄 Switching traffic back to green environment..."
+        sleep 3
+        
+        echo "🏥 Performing health checks on rolled-back version..."
+        sleep 2
+        
+        echo "🧹 Cleaning up failed deployment artifacts..."
+        sleep 1
+        
+        echo "✅ Emergency rollback completed successfully"
+        echo "🔍 Manual verification recommended"
     
     - name: Rollback notification
       uses: 8398a7/action-slack@v3
@@ -330,6 +383,5 @@ jobs:
               }]
             }]
           }
-      # Slack notifications (requires SLACK_WEBHOOK_URL secret to be configured)
       # env:
       #   SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

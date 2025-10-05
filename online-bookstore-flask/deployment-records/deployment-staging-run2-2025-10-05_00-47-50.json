@@ -1,0 +1,10 @@
+﻿{
+    "deployment_id":  "ps-run-2025-10-04-204750",
+    "version":  "main",
+    "timestamp":  "2025-10-05_00-47-50",
+    "deployed_by":  "shahsadruddin2009",
+    "target_url":  "https://staging-bookstore.herokuapp.com",
+    "environment":  "staging",
+    "status":  "success",
+    "run_number":  2
+}
