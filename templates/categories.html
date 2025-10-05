@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Categories - Online Bookstore</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><a href="{{ url_for('index') }}">📚 Online Bookstore</a></h1>
+            <nav>
+                <a href="{{ url_for('index') }}">Home</a>
+                <a href="{{ url_for('list_categories') }}" class="active">Categories</a>
+                <a href="{{ url_for('view_cart') }}">Cart ({{ cart.get_total_items() }})</a>
+            </nav>
+        </div>
+    </header>
+
+    <main class="container">
+        <h2>Book Categories</h2>
+        
+        <div class="categories-grid">
+            {% for category, count in categories.items() %}
+            <div class="category-card">
+                <h3>
+                    <a href="{{ url_for('browse_by_category', category_name=category) }}">
+                        {{ category }}
+                    </a>
+                </h3>
+                <p class="book-count">{{ count }} book{{ 's' if count != 1 else '' }}</p>
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if not categories %}
+        <div class="message">
+            <p>No categories available at the moment.</p>
+            <a href="{{ url_for('index') }}">Browse all books</a>
+        </div>
+        {% endif %}
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 Online Bookstore. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
