@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checkout - Online Bookstore</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Open+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <img src="{{ url_for('static', filename='logo.png') }}" alt="Online Bookstore Logo" class="logo">
+            <h1>Online Bookstore</h1>
+            <nav>
+                <a href="/">Home</a>
+                <a href="/cart">Cart</a>
+                <a href="/checkout" class="active">Checkout</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="checkout-section">
+        <div class="container">
+            <h2>Checkout</h2>
+            
+            <!-- Flash Messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flash-messages">
+                        {% for category, message in messages %}
+                            <div class="flash-message flash-{{ category }}">{{ message }}</div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+
+            <div class="checkout-content">
+                <div class="order-summary">
+                    <h3>Order Summary</h3>
+                    <div class="checkout-items">
+                        {% for item in cart.get_items() %}
+                        <div class="checkout-item">
+                            <div class="item-info">
+                                <img src="{{ url_for('static', filename=item.book.image) }}" alt="{{ item.book.title }}" class="item-thumbnail">
+                                <div class="item-details">
+                                    <h4>{{ item.book.title }}</h4>
+                                    <p>{{ item.book.category }}</p>
+                                    <p>Quantity: {{ item.quantity }}</p>
+                                </div>
+                            </div>
+                            <div class="item-price">
+                                <p>${{ "%.2f"|format(item.book.price) }} each</p>
+                                <p><strong>${{ "%.2f"|format(item.get_total_price()) }}</strong></p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    
+                    <div class="order-total">
+                        <p><strong>Total Items: {{ cart.get_total_items() }}</strong></p>
+                        <p class="final-total"><strong>Total: ${{ "%.2f"|format(total_price) }}</strong></p>
+                    </div>
+                </div>
+
+                <div class="checkout-actions">
+                    <a href="/cart" class="btn btn-secondary">Back to Cart</a>
+                    <button class="btn btn-primary complete-purchase-btn">Complete Purchase</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</body>
+</html>

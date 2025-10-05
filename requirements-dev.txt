@@ -1,0 +1,28 @@
+# Core Application Dependencies
+flask==3.0.3
+werkzeug==3.0.3
+flask-WTF==1.0.1
+
+# Testing Dependencies
+pytest==7.4.3
+pytest-cov==4.1.0
+pytest-flask==1.3.0
+
+# Code Quality Tools
+flake8==6.1.0
+black==23.11.0
+isort==5.12.0
+mypy==1.7.1
+
+# Security Tools
+bandit==1.7.5
+safety==2.3.4
+
+# Production Server
+gunicorn==21.2.0
+
+# Development Tools
+pre-commit==3.6.0
+
+# Performance Testing
+requests==2.31.0
