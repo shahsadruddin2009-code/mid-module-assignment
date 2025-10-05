@@ -40,9 +40,9 @@ $HealthCheckTimeout = 300
 $HealthCheckInterval = 10
 $MaxHealthChecks = 30
 
-# Environment URLs
-$StagingUrl = "https://staging-bookstore.herokuapp.com"
-$ProductionUrl = "https://bookstore-prod.herokuapp.com"
+# Environment URLs - PythonAnywhere
+$StagingUrl = "https://staging-bookstore.pythonanywhere.com"
+$ProductionUrl = "https://shahsadruddin2009.pythonanywhere.com"
 
 # Select target URL based on environment
 switch ($Environment) {

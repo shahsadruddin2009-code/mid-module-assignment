@@ -217,13 +217,13 @@ jobs:
       run: |
         echo "🧪 Running smoke tests on staging..."
         # Add staging smoke test commands here
-        # curl -f https://staging-bookstore.yourapp.com/
+        # curl -f https://staging-bookstore.pythonanywhere.com/
     
     - name: Run integration tests on staging
       run: |
         echo "🔗 Running integration tests on staging environment..."
         # You can run your test suite against staging here
-        # python -m pytest test_integration.py --base-url=https://staging-bookstore.yourapp.com
+        # python -m pytest test_integration.py --base-url=https://staging-bookstore.pythonanywhere.com
 
   # Deploy to Production
   deploy-production:
@@ -256,7 +256,7 @@ jobs:
       run: |
         echo "✅ Running post-deployment verification..."
         # Add production verification commands here
-        # curl -f https://bookstore.yourapp.com/
+        # curl -f https://shahsadruddin2009.pythonanywhere.com/
     
     - name: Create release
       uses: actions/create-release@v1

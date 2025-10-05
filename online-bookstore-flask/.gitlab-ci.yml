@@ -44,8 +44,8 @@ variables:
   PERFORMANCE_THRESHOLD: "2000"
   
   # Deployment Configuration
-  STAGING_URL: "https://staging-bookstore.gitlab.io"
-  PRODUCTION_URL: "https://bookstore.gitlab.io"
+  STAGING_URL: "https://staging-bookstore.pythonanywhere.com"
+  PRODUCTION_URL: "https://shahsadruddin2009.pythonanywhere.com"
 
 # Cache Configuration for faster builds
 cache:
@@ -245,7 +245,7 @@ deploy-staging:
     - echo "✅ Staging deployment completed!"
   environment:
     name: staging
-    url: https://staging-bookstore.yourapp.com
+    url: https://staging-bookstore.pythonanywhere.com
   only:
     - main
   needs:

@@ -25,9 +25,9 @@ HEALTH_CHECK_TIMEOUT=300
 HEALTH_CHECK_INTERVAL=10
 MAX_HEALTH_CHECKS=30
 
-# Environment URLs
-STAGING_URL="https://staging-bookstore.herokuapp.com"
-PRODUCTION_URL="https://bookstore-prod.herokuapp.com"
+# Environment URLs - PythonAnywhere
+STAGING_URL="https://staging-bookstore.pythonanywhere.com"
+PRODUCTION_URL="https://shahsadruddin2009.pythonanywhere.com"
 
 # Select target URL based on environment
 case $DEPLOYMENT_ENV in
