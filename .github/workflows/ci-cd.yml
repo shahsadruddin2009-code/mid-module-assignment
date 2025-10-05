@@ -100,7 +100,7 @@ jobs:
     
     - name: Generate coverage report
       run: |
-        pytest --cov=. --cov-report=xml --cov-report=html --cov-exclude="test_*" app.py models.py
+        pytest --cov=. --cov-report=xml --cov-report=html test_*.py
     
     - name: Upload test results
       uses: actions/upload-artifact@v4
